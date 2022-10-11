@@ -38,6 +38,9 @@ class Viewer {
     this.driveAssetLoaded = new Promise((resolve, reject) => {
       this.driveAssetLoadedResolver = resolve;
     });
+    this.iframeAssetLoaded = new Promise((resolve, reject) => {
+      this.iframeAssetLoadedResolver = resolve;
+    });
 
     this.parseURLforTimelineId(this.timelineURL);
 
@@ -59,6 +62,8 @@ class Viewer {
     if (!this.welcomeView) {
       this.makeDevToolsVisible(true);
     }
+
+    this.requestIframeDataMeta();
   }
 
   attachEventListeners() {
@@ -175,6 +180,10 @@ class Viewer {
         this.timelineProvider = 'drive';
         this.timelineId = parsedURL.pathname.match(/\b[0-9a-zA-Z]{5,40}\b/)[0];
       }
+      if (parsedURL.protocol === 'iframe:') {
+        this.timelineProvider = 'iframe';
+        this.timelineId = parsedURL.pathname.replace(/^\/+/, '');
+      }
     } catch (e) {
       // legacy URLs, without a drive:// prefix.
       this.timelineId = url;
@@ -271,7 +280,9 @@ class Viewer {
       return this._orig_loadResourcePromise(redirectedURL.toString());
     }
 
-    if (this.timelineProvider === 'drive') {
+    if (this.timelineProvider === 'iframe') {
+      return this.iframeAssetLoaded.then(payload => payload);
+    } else if (this.timelineProvider === 'drive') {
       return this.driveAssetLoaded.then(payload => payload);
     }
 
@@ -350,6 +361,26 @@ class Viewer {
     this.updateStatus(msg);
     this.showInfoMessage(msg);
     return this.driveAssetLoadedResolver(payload);
+  }
+
+  requestIframeDataMeta() {
+    if (this.timelineProvider !== 'iframe') return;
+    // if there's no this.timelineId then let's skip all this drive API stuff.
+    if (!this.timelineId) return;
+
+    this.makeDevToolsVisible(false);
+    window.addEventListener('message', (event) => {
+      try {
+        const {type, data} = JSON.parse(event.data);
+        if (type === 'message_timeline') {
+          this.makeDevToolsVisible(true);
+          this.updateStatus('Starting download of timeline from Drive. Please wait...');
+
+          this.iframeAssetLoadedResolver(data);
+        }
+      } catch (err) {
+      }
+    }, false);
   }
 
   fetchTimelineAsset(url, addRequestHeaders = Function.prototype, method = 'GET', body) {

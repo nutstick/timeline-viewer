@@ -1,7 +1,5 @@
 'use strict';
 
-const wait = (ms = 100) => new Promise(resolve => setTimeout(resolve, ms));
-
 // eslint-disable-next-line no-unused-vars
 class Viewer {
   constructor() {
@@ -14,26 +12,13 @@ class Viewer {
     this.totalSize = 50 * 1000 * 1000;
     this.loadingStarted = false;
     this.refreshPage = false;
-    this.canUploadToDrive = false;
-    this.welcomeView = false;
     // remote location of devtools we're using
     this.devtoolsBase = document.getElementById('devtoolsscript').src.replace(/inspector\.js.*/, '');
 
     this.statusElem = document.getElementById('status');
-    this.infoMessageElem = document.getElementById('info-message');
-    this.uploadToDriveElem = document.getElementById('upload-to-drive');
-    this.networkOnlineStatusElem = document.getElementById('online-status');
-    this.networkOfflineStatusElem = document.getElementById('offline-status');
-    this.authBtn = document.getElementById('auth');
-    this.revokeAccessBtn = document.getElementById('revoke-access');
-    this.docsElem = document.getElementById('howto');
 
-    this.auth = new GoogleAuth();
     this.utils = new Utils();
     this.devTools = new DevTools({viewerInstance: this});
-    this.gdrive = new GoogleDrive({viewerInstance: this});
-
-    this.attachEventListeners();
 
     this.driveAssetLoaded = new Promise((resolve, reject) => {
       this.driveAssetLoadedResolver = resolve;
@@ -47,65 +32,15 @@ class Viewer {
     if (!this.timelineURL || this.startSplitViewIfNeeded(this.timelineURL)) {
       this.splitViewContainer = document.getElementById('split-view-container');
       this.isSplitView = this.splitViewContainer ? true : false;
-      this.canUploadToDrive = true;
-      this.welcomeView = true;
       this.handleDragEvents();
-      this.docsElem.hidden = false;
     }
 
     // Start loading DevTools. (checkAuth will be racing against it)
     this.statusElem.hidden = false;
 
-    this.handleNetworkStatus();
     this.devTools.init();
 
-    if (!this.welcomeView) {
-      this.makeDevToolsVisible(true);
-    }
-
     this.requestIframeDataMeta();
-  }
-
-  attachEventListeners() {
-    this.authBtn.addEventListener('click', this.checkAuth.bind(this));
-    this.revokeAccessBtn.addEventListener('click', this.revokeAccess.bind(this));
-    this.uploadToDriveElem.addEventListener('click', this.uploadTimelineData.bind(this));
-    this.attachSubmitUrlListener();
-    this.attachPrefillUrlListener();
-  }
-
-  attachSubmitUrlListener() {
-    const form = document.querySelector('form');
-    form.addEventListener('submit', evt => {
-      evt.preventDefault();
-      const formdata = new FormData(evt.target);
-      const url = formdata.get('url');
-      if (!url) return;
-      const parsedURL = new URL(location.href);
-      parsedURL.searchParams.delete('loadTimelineFromURL');
-      // this is weird because we don't want url encoding of the URL
-      parsedURL.searchParams.append('loadTimelineFromURL', 'REPLACEME');
-      location.href = parsedURL.toString().replace('REPLACEME', url);
-    });
-  }
-
-  attachPrefillUrlListener() {
-    const input = document.querySelector('#enterurl');
-    const submit = document.querySelector('input[type=submit]');
-
-    [...document.querySelectorAll('a[data-url]')].forEach(elem => {
-      elem.addEventListener('click', async evt => {
-        evt.preventDefault();
-        evt.cancelBubble = true;
-        const url = evt.target.dataset.url;
-        await wait(250);
-        input.value = url;
-        await wait(600);
-        submit.focus();
-        await wait(600);
-        submit.click();
-      });
-    });
   }
 
   handleDragEvents() {
@@ -119,67 +54,17 @@ class Viewer {
     this.uploadToDriveElem.hidden = !display;
   }
 
-  showInfoMessage(text) {
-    this.infoMessageElem.textContent = text;
-    this.infoMessageElem.hidden = false;
-
-    setTimeout(() => {
-      this.hideInfoMessage();
-    }, 3000);
-  }
-
-  hideInfoMessage() {
-    this.infoMessageElem.textContent = '';
-    this.infoMessageElem.hidden = true;
-  }
-
   dragover(e) {
     e.stopPropagation();
     e.preventDefault();
-    this.makeDevToolsVisible(true);
     // we fair that all timeline resources are uploaded
-    UI.inspectorView.showPanel('timeline').then(_ => {
-      this.toggleUploadToDriveElem(this.canUploadToDrive);
-    });
+    UI.inspectorView.showPanel('timeline');
   }
 
-  handleNetworkStatus() {
-    if (navigator.onLine) {
-      this.toggleNetworkStatusMessage();
-    } else {
-      this.toggleNetworkStatusMessage({status: 'offline'});
-    }
-
-    window.addEventListener('online', _ => {
-      this.toggleNetworkStatusMessage();
-    }, false);
-
-    window.addEventListener('offline', _ => {
-      this.toggleNetworkStatusMessage({status: 'offline'});
-    }, false);
-  }
-
-  toggleNetworkStatusMessage(options = {status: 'online'}) {
-    if (options.status === 'online') {
-      this.networkOnlineStatusElem.hidden = false;
-      this.networkOfflineStatusElem.hidden = true;
-    } else {
-      this.networkOnlineStatusElem.hidden = true;
-      this.networkOfflineStatusElem.hidden = false;
-    }
-  }
 
   parseURLforTimelineId(url) {
     try {
       const parsedURL = new URL(url);
-      if (parsedURL.protocol === 'drive:') {
-        this.timelineProvider = 'drive';
-        this.timelineId = parsedURL.pathname.replace(/^\/+/, '');
-      }
-      if (parsedURL.hostname === 'drive.google.com') {
-        this.timelineProvider = 'drive';
-        this.timelineId = parsedURL.pathname.match(/\b[0-9a-zA-Z]{5,40}\b/)[0];
-      }
       if (parsedURL.protocol === 'iframe:') {
         this.timelineProvider = 'iframe';
         this.timelineId = parsedURL.pathname.replace(/^\/+/, '');
@@ -187,7 +72,7 @@ class Viewer {
     } catch (e) {
       // legacy URLs, without a drive:// prefix.
       this.timelineId = url;
-      this.timelineProvider = 'drive';
+      this.timelineProvider = 'iframe';
     }
   }
 
@@ -214,49 +99,15 @@ class Viewer {
     return false;
   }
 
-  makeDevToolsVisible(bool) {
-    this.welcomeView = !bool;
-    document.documentElement.classList[bool ? 'remove' : 'add']('hide-devtools');
-  }
-
   updateStatus(str) {
-    this.statusElem.textContent = str;
-  }
-
-  checkAuth() {
-    const handleAuth = this.handleAuthResult.bind(this);
-    this.auth.checkAuth(handleAuth);
-
-    return false;
-  }
-
-  revokeAccess() {
-    this.auth.revokeAccess().then(() => {
-      this.updateStatus('Drive API status: not signed in');
-      this.authBtn.hidden = false;
-      this.revokeAccessBtn.hidden = true;
-    });
-  }
-
-  handleAuthResult() {
-    if (this.timelineProvider !== 'drive') return;
-
-    if (this.auth.isSignedIn() === false) {
-      this.updateStatus('Drive API status: not signed in');
-
-      this.authBtn.hidden = false;
-      this.docsElem.hidden = false;
-      this.canUploadToDrive = false;
-      this.makeDevToolsVisible(false);
-      return new Error('Google auth error');
+    if (this.timelineProvider === 'iframe') {
+      window.postMessage(JSON.stringify({
+        type: 'message_status',
+        data: str,
+      }), '*');
+    } else {
+      this.statusElem.textContent = str;
     }
-
-    this.authBtn.hidden = true;
-    this.revokeAccessBtn.hidden = false;
-    this.updateStatus('Drive API status: successfully signed in');
-    this.statusElem.hidden = false;
-    this.canUploadToDrive = true;
-    this.requestDriveFileMeta();
   }
 
   loadResource(requestedURL) {
@@ -282,8 +133,6 @@ class Viewer {
 
     if (this.timelineProvider === 'iframe') {
       return this.iframeAssetLoaded.then(payload => payload);
-    } else if (this.timelineProvider === 'drive') {
-      return this.driveAssetLoaded.then(payload => payload);
     }
 
     // pass through URLs that aren't our timelineURL param
@@ -298,83 +147,16 @@ class Viewer {
     return this.fetchTimelineAsset(url.href).then(payload => payload);
   }
 
-  requestDriveFileMeta() {
-    // if there's no this.timelineId then let's skip all this drive API stuff.
-    if (!this.timelineId) return;
-
-    const url = new URL(`https://www.googleapis.com/drive/v2/files/${this.timelineId}`);
-    url.searchParams.append('fields', 'version, downloadUrl, copyable, title, originalFilename, fileSize');
-    url.searchParams.append('key', GoogleAuth.apiKey);
-
-    const headers = new Headers();
-    headers.append('Authorization', `Bearer ${GoogleAuth.getUserAccessToken()}`);
-
-    this.utils.fetch(url.toString(), {headers})
-      .then(resp => resp.json())
-      .then(this.handleDriveFileMetadata.bind(this));
-  }
-
-  handleDriveFileMetadata(response) {
-    document.title = `${response.originalFilename} | ${document.title}`;
-    this.totalSize = Number(response.fileSize);
-    const error = response.error;
-
-    if (error) {
-      this.makeDevToolsVisible(false);
-      const reasons = error.errors.map(e => e.reason);
-      let fileUnavailableStr = '';
-      fileUnavailableStr += reasons.includes('notFound') ? 'Confirm you have Edit permissions to the file. ' : '';
-      if (reasons.includes('authError')) {
-        fileUnavailableStr += 'Please sign in. ';
-        this.authBtn.hidden = false;
-      }
-      this.updateStatus(`${fileUnavailableStr} Drive API error: ${error.message}. (${reasons.join(', ')})`);
-      throw new Error(response.message, response.error);
-    }
-
-    if (!response.downloadUrl) {
-      this.makeDevToolsVisible(false);
-      this.updateStatus('Downloading not available. Confirm you have Edit permissions to the file.');
-      throw new Error(response.message, response.error);
-    }
-
-    this.makeDevToolsVisible(true);
-    this.updateStatus('Starting download of timeline from Drive. Please wait...');
-    // alt=media forces file contents in response body.
-    const url = `${response.downloadUrl}&alt=media`;
-
-    this.fetchDriveAsset(url)
-      .then(payload => this.handleDriveAsset(payload))
-      .catch(_ => {
-        this.makeDevToolsVisible(false);
-        this.updateStatus('Download of Drive asset failed.');
-        throw new Error('XHR of Drive asset failed');
-      });
-  }
-
-  fetchDriveAsset(url) {
-    return this.fetchTimelineAsset(url, this.setAuthHeaders.bind(this));
-  }
-
-  handleDriveAsset(payload) {
-    const msg = `✅ Timeline downloaded from Drive. (${payload.length} bytes)`;
-    this.updateStatus(msg);
-    this.showInfoMessage(msg);
-    return this.driveAssetLoadedResolver(payload);
-  }
-
   requestIframeDataMeta() {
     if (this.timelineProvider !== 'iframe') return;
     // if there's no this.timelineId then let's skip all this drive API stuff.
     if (!this.timelineId) return;
 
-    this.makeDevToolsVisible(false);
     window.addEventListener('message', (event) => {
       try {
         const {type, data} = JSON.parse(event.data);
         if (type === 'message_timeline') {
-          this.makeDevToolsVisible(true);
-          this.updateStatus('Starting download of timeline from Drive. Please wait...');
+          this.updateStatus('Starting download of timeline from iframe. Please wait...');
 
           this.iframeAssetLoadedResolver(data);
         }
@@ -400,7 +182,6 @@ class Viewer {
         }
       })
       .catch(({error, xhr}) => {
-        this.makeDevToolsVisible(false);
         this.updateStatus('Download of asset failed. ' + ((xhr.readyState == xhr.DONE) ? 'CORS headers likely not applied.' : ''));
         console.warn('Download of asset failed', error);
       });
@@ -432,35 +213,6 @@ class Viewer {
         }
       });
     } catch (e) {}
-  }
-
-  uploadTimelineData() {
-    const panel = Timeline.TimelinePanel.instance();
-    const bs = panel._performanceModel._tracingModel.backingStorage();
-    return bs._file.read().then(str => {
-      this.uploadData(str);
-    });
-  }
-
-  uploadData(traceData) {
-    this.toggleUploadToDriveElem(false);
-    this.showInfoMessage('Uploading trace on Google Drive ...');
-    this.gdrive.uploadData(`Timeline-data-${Date.now()}`, traceData)
-      .then(data => {
-        if (data.error) throw data.error;
-        else return data;
-      })
-      .then(data => {
-        return this.gdrive.insertPermission(data.id).then(_ => data);
-      })
-      .then(data => {
-        this.changeUrl(data.id);
-        this.showInfoMessage('Trace successfully uploaded on Google Drive');
-      })
-      .catch(_ => {
-        this.toggleUploadToDriveElem(this.canUploadToDrive);
-        this.showInfoMessage('Trace was not uploaded on Google Drive :(');
-      });
   }
 
   changeUrl(id) {

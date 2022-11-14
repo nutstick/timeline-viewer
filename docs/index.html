@@ -15,7 +15,7 @@
           Shareable URLs for your Chrome DevTools Performance traces.
       </h4>
     </div>
-    <script src="service-worker.js"></script>
+    <!-- <script src="service-worker.js"></script> -->
     <script src="https://chrome-devtools-frontend.appspot.com/serve_file/@675968a8c657a3bd9c1c2c20c5d2935577bbc5e6/shell.js" id="devtoolsscript"></script>
     <script src="https://chrome-devtools-frontend.appspot.com/serve_file/@675968a8c657a3bd9c1c2c20c5d2935577bbc5e6/devtools_app.js"></script>
 
@@ -36,21 +36,21 @@
         viewer.devTools.monkeypatchLoadResourcePromise();
         Runtime.startApplication('timelineviewer_app');
 
-        navigator.serviceWorker
-          .register('service-worker.js')
-          .then(registration => {
-            registration.onupdatefound = () => {
-              const installingWorker = registration.installing;
-              installingWorker.onstatechange = () => {
-                if (installingWorker.state === 'activated') {
-                  viewer.showInfoMessage('Timeline Viewer is ready to be used offline');
-                }
-              };
-            };
-          })
-          .catch(error => {
-            console.error('Error during service worker registration:', error);
-          });
+        // navigator.serviceWorker
+        //   .register('service-worker.js')
+        //   .then(registration => {
+        //     registration.onupdatefound = () => {
+        //       const installingWorker = registration.installing;
+        //       installingWorker.onstatechange = () => {
+        //         if (installingWorker.state === 'activated') {
+        //           viewer.showInfoMessage('Timeline Viewer is ready to be used offline');
+        //         }
+        //       };
+        //     };
+        //   })
+        //   .catch(error => {
+        //     console.error('Error during service worker registration:', error);
+        //   });
       });
     </script>
 
